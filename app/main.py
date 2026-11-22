@@ -19,8 +19,6 @@ from app.services import review as review_svc
 from app.services import rework as rework_svc
 from app.services import settings as settings_svc
 from app.services import cabin_full as cabin_full_svc
-from app.services import cabin_full_cutover as cabin_full_cutover_svc
-from app.services import cabin_full_dualwrite as cabin_full_dual_svc
 from app.services import sources as sources_svc
 from app.services.errors import ServiceError
 
@@ -311,35 +309,19 @@ def create_app():
 
         def cabin_full_dash(request):
             _require(request)
-            return _json(cabin_full_cutover_svc.board())
+            return _json(cabin_full_svc.snapshot())
 
         def cabin_full_commit(request):
             _require(request)
             body = _read_json(request)
-            return _json(cabin_full_svc.commit_action(body))
+            bin_code = str(body.get("bin_code") or "").strip()
+            if not bin_code:
+                raise ServiceError("舱码不能空")
+            return _json(cabin_full_svc.commit_gate(bin_code))
 
-        def cabin_full_half(request):
+        def cabin_full_settings(request):
             _require(request)
-            return _json(cabin_full_svc.reconcile_display())
-
-        def cabin_full_snap(request):
-            _require(request)
-            return _json(cabin_full_svc.snapshot())
-
-        def cabin_full_cutover(request):
-            _require(request)
-            body = _read_json(request)
-            return _json(
-                cabin_full_cutover_svc.append_cutover(
-                    int(body.get("ref_id") or 0),
-                    str(body.get("note") or "满舱闸"),
-                )
-            )
-
-        def cabin_full_dual(request):
-            _require(request)
-            body = _read_json(request)
-            return _json(cabin_full_dual_svc.apply_dualwrite(str(body.get("note") or "满舱闸")))
+            return _json(cabin_full_svc.settings_view())
 
         def audits_list(request):
             _require(request)
@@ -381,10 +363,7 @@ def create_app():
         config.add_route("audits", "/api/audits")
         config.add_route("cabin_full_dash", "/api/cabin_full/dash")
         config.add_route("cabin_full_commit", "/api/cabin_full/commit")
-        config.add_route("cabin_full_half", "/api/cabin_full/half")
-        config.add_route("cabin_full_snap", "/api/cabin_full/snap")
-        config.add_route("cabin_full_cutover", "/api/cabin_full/cutover")
-        config.add_route("cabin_full_dual", "/api/cabin_full/dual")
+        config.add_route("cabin_full_settings", "/api/cabin_full/settings")
 
 
         config.add_view(root, route_name="root")
@@ -425,10 +404,7 @@ def create_app():
         config.add_view(wrap(audits_list), route_name="audits", request_method="GET")
         config.add_view(wrap(cabin_full_dash), route_name="cabin_full_dash", request_method="GET")
         config.add_view(wrap(cabin_full_commit), route_name="cabin_full_commit", request_method="POST")
-        config.add_view(wrap(cabin_full_half), route_name="cabin_full_half", request_method="POST")
-        config.add_view(wrap(cabin_full_snap), route_name="cabin_full_snap", request_method="GET")
-        config.add_view(wrap(cabin_full_cutover), route_name="cabin_full_cutover", request_method="POST")
-        config.add_view(wrap(cabin_full_dual), route_name="cabin_full_dual", request_method="POST")
+        config.add_view(wrap(cabin_full_settings), route_name="cabin_full_settings", request_method="GET")
 
 
         return config.make_wsgi_app()

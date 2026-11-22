@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.db import get_db
 from app.services import audit as audit_svc
+from app.services import cabin_full as cabin_full_svc
 from app.services import settings as settings_svc
 from app.services.errors import ServiceError
 
@@ -44,6 +45,11 @@ def run_reconcile(db_path: str | None = None) -> dict:
             f"{label}：待复核{open_rows} / 已放行{released} / 回炉中{reworking} / "
             f"已废弃{abandoned} / 错位{mismatch}"
         )
+        gate_snap = cabin_full_svc.snapshot(db_path)
+        summary += (
+            f" / 满舱{gate_snap['full_bin_count']}舱"
+            f"·落点{gate_snap['gates_total']}·偏移{gate_snap['drifted']}"
+        )
         cur = conn.execute(
             """
             INSERT INTO reconcile_reports(
@@ -61,7 +67,6 @@ def run_reconcile(db_path: str | None = None) -> dict:
 
 
 def dashboard(db_path: str | None = None) -> dict:
-    from app.services.cabin_full_audit import audit_summary as _cabin_full_audit
     with get_db(db_path) as conn:
         return {
             "batches": conn.execute("SELECT COUNT(*) AS c FROM capture_batches").fetchone()["c"],
@@ -81,5 +86,5 @@ def dashboard(db_path: str | None = None) -> dict:
                 "SELECT COUNT(*) AS c FROM policy_rules WHERE enabled=1"
             ).fetchone()["c"],
             "audits": conn.execute("SELECT COUNT(*) AS c FROM audit_events").fetchone()["c"],
-            "cabin_full_audit": _cabin_full_audit(db_path),
+            "cabin_full": cabin_full_svc.snapshot(db_path),
         }

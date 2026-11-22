@@ -127,6 +127,22 @@ CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS cabin_full_gates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bin_code TEXT NOT NULL,
+  occupied INTEGER NOT NULL,
+  capacity INTEGER NOT NULL,
+  water_level INTEGER NOT NULL,
+  fingerprint TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  active INTEGER NOT NULL DEFAULT 1,
+  committed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(bin_code, active)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cabin_full_gates_bin
+  ON cabin_full_gates(bin_code, active);
 """
 
 
@@ -144,9 +160,10 @@ def ensure_db() -> Path:
 def get_db(db_path: str | Path | None = None):
     path = Path(db_path) if db_path else Config.DATABASE_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=3000")
     try:
         yield conn
         conn.commit()

@@ -6,12 +6,21 @@ export async function renderCaptures(el) {
   const openBin = (bins.items || []).find((b) => b.status === '开放');
   el.innerHTML = `
     <div class="card">
-      <h2><span class="chip" data-thick="cabin_full">满舱已亮</span> 抓取批次</h2>
+      <h2>抓取批次</h2>
+      <div class="stat-strip">
+        ${(bins.items || []).map((b) => `
+          <div class="stat">
+            <span class="muted">${b.bin_code} 水位</span>
+            <b>${b.water_level}/${b.capacity}</b>
+            <span class="chip ${b.gate_active ? (b.fingerprint_drifted ? 'bad' : 'ok') : (b.is_full ? 'bad' : '')}">${b.full_chip}</span>
+          </div>`).join('')}
+      </div>
       <div class="row">
         <input id="src" placeholder="来源名" />
         <input id="note" placeholder="备注" />
         <button id="create">新建批次</button>
       </div>
+      <p id="captureMsg" class="err"></p>
     </div>
     <div class="card">
       <table>
@@ -52,11 +61,17 @@ export async function renderCaptures(el) {
   el.querySelectorAll('[data-auto]').forEach((btn) => {
     btn.onclick = async () => {
       if (!openBin) return;
-      await api('/api/quarantine/auto-enter', {
-        method: 'POST',
-        body: JSON.stringify({ batch_id: Number(btn.dataset.auto), bin_id: openBin.id }),
-      });
-      await renderCaptures(el);
+      const msg = el.querySelector('#captureMsg');
+      msg.textContent = '';
+      try {
+        await api('/api/quarantine/auto-enter', {
+          method: 'POST',
+          body: JSON.stringify({ batch_id: Number(btn.dataset.auto), bin_id: openBin.id }),
+        });
+        await renderCaptures(el);
+      } catch (e) {
+        msg.textContent = e.message;
+      }
     };
   });
   el.querySelectorAll('[data-open]').forEach((btn) => {

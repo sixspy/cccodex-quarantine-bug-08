@@ -2,24 +2,38 @@ from __future__ import annotations
 
 from app.db import get_db
 from app.services import audit as audit_svc
+from app.services import cabin_full as cabin_full_svc
 from app.services import settings as settings_svc
 from app.services.errors import ServiceError
 
 
 def list_bins(db_path: str | None = None) -> list[dict]:
-    from app.services.cabin_full import panel_chip, active_read_ref
-    _ = panel_chip(db_path)
-    _ = active_read_ref(db_path)
     with get_db(db_path) as conn:
         rows = conn.execute(
             """
             SELECT b.*,
               (SELECT COUNT(*) FROM quarantine_rows r WHERE r.bin_id=b.id AND r.status='待复核') AS pending_count,
+              (SELECT COUNT(*) FROM quarantine_rows r WHERE r.bin_id=b.id AND r.status IN ('待复核','回炉中')) AS occupied_count,
               (SELECT COUNT(*) FROM quarantine_rows r WHERE r.bin_id=b.id) AS row_count
             FROM quarantine_bins b ORDER BY b.id
             """
         ).fetchall()
-        return [dict(r) for r in rows]
+        bins = [dict(r) for r in rows]
+    for bin_row in bins:
+        gate = cabin_full_svc.gate_for_bin(bin_row["bin_code"], db_path)
+        bin_row["water_level"] = bin_row["occupied_count"]
+        bin_row["is_full"] = bin_row["occupied_count"] >= bin_row["capacity"]
+        if gate:
+            bin_row["gate_active"] = True
+            bin_row["full_chip"] = gate["full_chip"]
+            bin_row["fingerprint"] = gate["fingerprint_locked"]
+            bin_row["fingerprint_drifted"] = gate["drifted"]
+        else:
+            bin_row["gate_active"] = False
+            bin_row["full_chip"] = "满舱未落点" if bin_row["is_full"] else cabin_full_svc.CHIP_OPEN
+            bin_row["fingerprint"] = ""
+            bin_row["fingerprint_drifted"] = False
+    return bins
 
 
 def list_rows(bin_id: int | None = None, db_path: str | None = None) -> list[dict]:
@@ -74,15 +88,13 @@ def enter_item(item_id: int, bin_id: int, reason: str, db_path: str | None = Non
             "SELECT COUNT(*) AS c FROM quarantine_rows WHERE bin_id=? AND status IN ('待复核','回炉中')",
             (bin_id,),
         ).fetchone()["c"]
-        if occupied >= bin_row["capacity"]:
-            raise ServiceError("隔离舱已满")
         exists = conn.execute(
             "SELECT id FROM quarantine_rows WHERE item_id=?", (item_id,)
         ).fetchone()
         if exists:
             raise ServiceError("条目已在隔离舱")
-        from app.services.cabin_full import commit_action
-        commit_action({"bin_id": bin_id, "item_id": item_id}, db_path)
+        # 满舱闸：只读账册，满舱无落点 / 指纹漂移 / 超额一律拒
+        cabin_full_svc.assert_entry_allowed_conn(conn, bin_row)
         cur = conn.execute(
             """
             INSERT INTO quarantine_rows(bin_id, item_id, reason, status)

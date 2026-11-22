@@ -30,38 +30,30 @@ export async function renderSettings(el) {
   });
 
   try {
-    const dash = await api('/api/cabin_full/dash');
+    const cf = await api('/api/cabin_full/settings');
     el.innerHTML += `<div class="card" style="margin-top:1rem">
-      <h3>满舱闸</h3>
-      <span class="chip">${dash.chip}</span>
-      <p class="muted">读轨 ${dash.active_read} · 切流指纹 ${dash.cutover_fp || '空'} · 拒回刷 ${dash.reject_refresh} · 归档 ${dash.archive_count} · 新旗 ${dash.live_flag || '空'} · 对齐差 ${dash.panel_pack_mismatch}</p>
-      <div class="row">
-        <button id="go_cabin_full" type="button">落台</button>
-        <button id="half_cabin_full" type="button">半修对齐</button>
-        <button id="cut_cabin_full" type="button">切流账册</button>
-        <button id="dual_cabin_full" type="button">双写两轨</button>
+      <h3>${cf.title} <span class="muted">${cf.track_label}</span></h3>
+      <div class="stat-strip">
+        <div class="stat"><span class="muted">读轨</span><b>${cf.track}</b></div>
+        <div class="stat"><span class="muted">满舱舱数</span><b>${cf.full_bin_count}</b></div>
+        <div class="stat"><span class="muted">落点行</span><b>${cf.gates_total}</b></div>
+        <div class="stat"><span class="muted">指纹偏移</span><b>${cf.drifted}</b></div>
       </div>
+      <p class="muted">满舱口径只认审计账册：当刻舱码与水位指纹落定即只读，拒绝回刷；本页不提供双轨/归档切流操作。</p>
+      <table>
+        <thead><tr><th>舱码</th><th>水位/容量</th><th>指纹</th><th>版本</th><th>落定时间</th></tr></thead>
+        <tbody>
+          ${(cf.gates || []).map((g) => `
+            <tr>
+              <td>${g.bin_code}</td>
+              <td>${g.water_level}/${g.capacity}</td>
+              <td class="muted">${(g.fingerprint || '').slice(0, 16)}…</td>
+              <td>${g.revision}</td>
+              <td>${g.committed_at}</td>
+            </tr>`).join('') || '<tr><td colspan="5" class="empty">暂无满舱落点</td></tr>'}
+        </tbody>
+      </table>
     </div>`;
-    const go = el.querySelector('#go_cabin_full');
-    if (go) go.onclick = async () => {
-      await api('/api/cabin_full/commit', { method:'POST', body: JSON.stringify({ref:1}) });
-      await renderSettings(el);
-    };
-    const half = el.querySelector('#half_cabin_full');
-    if (half) half.onclick = async () => {
-      await api('/api/cabin_full/half', { method:'POST', body:'{}' });
-      await renderSettings(el);
-    };
-    const cut = el.querySelector('#cut_cabin_full');
-    if (cut) cut.onclick = async () => {
-      await api('/api/cabin_full/cutover', { method:'POST', body: JSON.stringify({ref_id:1, note:'满舱闸'}) });
-      await renderSettings(el);
-    };
-    const dual = el.querySelector('#dual_cabin_full');
-    if (dual) dual.onclick = async () => {
-      await api('/api/cabin_full/dual', { method:'POST', body: JSON.stringify({note:'满舱闸'}) });
-      await renderSettings(el);
-    };
   } catch (e) { /* optional surface */ }
 
 }
